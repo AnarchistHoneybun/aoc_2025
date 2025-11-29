@@ -1,0 +1,355 @@
+#!/bin/bash
+set -e
+
+SRC_DIR="src"
+BIN_DIR="bin"
+INPUT_DIR="inputs"
+
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
+print_error() {
+    echo "[✗] $1" >&2
+}
+
+print_success() {
+    echo "[✓] $1"
+}
+
+print_info() {
+    echo "[→] $1"
+}
+
+print_warning() {
+    echo "[!] $1"
+}
+
+show_usage() {
+    local session_status="not set"
+    if [ -n "$AOC_SESSION" ] && [ "$AOC_SESSION" != "your_session_cookie_here" ]; then
+        session_status="ok"
+    fi
+    
+    cat << EOF
+usage: coal <command> [day] [options]
+
+commands:
+  setup <day>         create source file and fetch input
+  run <day>           compile and run with real input
+  compile <day>       compile only
+  test <day>          run with test input (inputs/dayXX_test.txt)
+  fetch <day>         fetch input only
+  submit <day> <part> <answer>
+                      submit answer for part 1 or 2
+  clean [day]         remove binary (all if no day given)
+  status              show progress
+  help                show this message
+
+config:
+  year: ${AOC_YEAR:-not set}
+  session: ${session_status}
+EOF
+}
+
+get_padded_day() {
+    printf "%02d" "$1"
+}
+
+setup_day() {
+    local day=$1
+    local padded_day=$(get_padded_day "$day")
+    local input_file="${INPUT_DIR}/day${padded_day}.txt"
+    local code_file="${SRC_DIR}/day${padded_day}.c"
+
+    mkdir -p "$SRC_DIR" "$BIN_DIR" "$INPUT_DIR"
+
+    # Ensure aoc_utils.h exists in project root
+    if [ ! -f "aoc_utils.h" ]; then
+        print_error "aoc_utils.h not found in project root"
+        exit 1
+    fi
+
+    if [ -f "$code_file" ]; then
+        print_warning "$code_file exists, skipping"
+    else
+        cp template.c "$code_file"
+        print_success "created $code_file"
+    fi
+
+    fetch_input "$day"
+}
+
+fetch_input() {
+    local day=$1
+    local padded_day=$(get_padded_day "$day")
+    local input_file="${INPUT_DIR}/day${padded_day}.txt"
+
+    mkdir -p "$INPUT_DIR"
+
+    if [ -z "$AOC_SESSION" ] || [ "$AOC_SESSION" == "your_session_cookie_here" ]; then
+        print_warning "session not configured"
+        echo "  https://adventofcode.com/${AOC_YEAR}/day/${day}/input"
+        return 1
+    fi
+
+    if [ -f "$input_file" ]; then
+        print_warning "$input_file exists, skipping"
+        return 0
+    fi
+
+    local http_code=$(curl -s -w "%{http_code}" -b "session=${AOC_SESSION}" \
+        "https://adventofcode.com/${AOC_YEAR}/day/${day}/input" \
+        -o "$input_file")
+
+    if [ "$http_code" == "200" ] && [ -s "$input_file" ]; then
+        print_success "fetched $input_file"
+        return 0
+    else
+        print_error "fetch failed (http $http_code)"
+        rm -f "$input_file"
+        return 1
+    fi
+}
+
+compile_day() {
+    local day=$1
+    local padded_day=$(get_padded_day "$day")
+    local code_file="${SRC_DIR}/day${padded_day}.c"
+    local binary="${BIN_DIR}/day${padded_day}"
+
+    if [ ! -f "$code_file" ]; then
+        print_error "$code_file not found (run: coal setup $day)"
+        return 1
+    fi
+
+    # Check for aoc_utils.h
+    if [ ! -f "aoc_utils.h" ]; then
+        print_error "aoc_utils.h not found in project root"
+        return 1
+    fi
+
+    mkdir -p "$BIN_DIR"
+    
+    # Include current directory for aoc_utils.h
+    if gcc -o "$binary" "$code_file" -I. -Wall -Wextra -O2 -std=c11 -lm 2>&1; then
+        print_success "compiled $binary"
+        return 0
+    else
+        print_error "compilation failed"
+        return 1
+    fi
+}
+
+run_day() {
+    local day=$1
+    local padded_day=$(get_padded_day "$day")
+    local input_file="${INPUT_DIR}/day${padded_day}.txt"
+    local binary="${BIN_DIR}/day${padded_day}"
+
+    if ! compile_day "$day"; then
+        return 1
+    fi
+
+    if [ ! -f "$input_file" ]; then
+        print_warning "$input_file not found, fetching..."
+        if ! fetch_input "$day"; then
+            print_error "no input file"
+            return 1
+        fi
+    fi
+
+    echo ""
+    "$binary" "$input_file"
+}
+
+test_day() {
+    local day=$1
+    local padded_day=$(get_padded_day "$day")
+    local test_file="${INPUT_DIR}/day${padded_day}_test.txt"
+    local binary="${BIN_DIR}/day${padded_day}"
+
+    if ! compile_day "$day"; then
+        return 1
+    fi
+
+    if [ ! -f "$test_file" ]; then
+        print_error "$test_file not found"
+        return 1
+    fi
+
+    echo ""
+    "$binary" "$test_file"
+}
+
+clean_day() {
+    if [ -z "$1" ]; then
+        rm -rf "$BIN_DIR"
+        mkdir -p "$BIN_DIR"
+        print_success "removed all binaries"
+    else
+        local day=$1
+        local padded_day=$(get_padded_day "$day")
+        local binary="${BIN_DIR}/day${padded_day}"
+        
+        if [ -f "$binary" ]; then
+            rm -f "$binary"
+            print_success "removed $binary"
+        else
+            print_warning "$binary not found"
+        fi
+    fi
+}
+
+show_status() {
+    printf "%-6s %-15s %-15s %-15s\n" "day" "code" "input" "binary"
+    printf "%-6s %-15s %-15s %-15s\n" "---" "----" "-----" "------"
+    
+    for day in {1..25}; do
+        local padded_day=$(get_padded_day "$day")
+        local code_file="${SRC_DIR}/day${padded_day}.c"
+        local input_file="${INPUT_DIR}/day${padded_day}.txt"
+        local binary="${BIN_DIR}/day${padded_day}"
+        
+        if [ -f "$code_file" ] || [ -f "$input_file" ] || [ -f "$binary" ]; then
+            local code_status="✗"
+            local input_status="✗"
+            local binary_status="✗"
+            
+            [ -f "$code_file" ] && code_status="✓"
+            [ -f "$input_file" ] && input_status="✓"
+            [ -f "$binary" ] && binary_status="✓"
+            
+            printf "%-6s %-15s %-15s %-15s\n" "$day" "$code_status" "$input_status" "$binary_status"
+        fi
+    done
+}
+
+parse_submit_response() {
+    local response="$1"
+    
+    # Check for various response patterns
+    if echo "$response" | grep -q "That's the right answer"; then
+        echo "correct"
+    elif echo "$response" | grep -q "That's not the right answer"; then
+        echo "incorrect"
+    elif echo "$response" | grep -q "You gave an answer too recently"; then
+        echo "too_soon"
+    elif echo "$response" | grep -q "Did you already complete it?"; then
+        echo "already_completed"
+    elif echo "$response" | grep -q "That's not quite right"; then
+        echo "incorrect"
+    else
+        echo "unknown"
+    fi
+}
+
+submit_answer() {
+    local day=$1
+    local part=$2
+    local answer=$3
+    
+    if [ -z "$AOC_SESSION" ] || [ "$AOC_SESSION" == "your_session_cookie_here" ]; then
+        print_error "session not configured in .env"
+        return 1
+    fi
+    
+    if [ -z "$day" ] || [ -z "$part" ] || [ -z "$answer" ]; then
+        print_error "usage: coal submit <day> <part> <answer>"
+        return 1
+    fi
+    
+    if [ "$part" != "1" ] && [ "$part" != "2" ]; then
+        print_error "part must be 1 or 2"
+        return 1
+    fi
+    
+    local url="https://adventofcode.com/${AOC_YEAR}/day/${day}/answer"
+    
+    print_info "submitting answer '$answer' for day $day part $part..."
+    
+    local response=$(curl -s -b "session=${AOC_SESSION}" \
+        -X POST \
+        -d "level=${part}&answer=${answer}" \
+        "$url")
+    
+    local result=$(parse_submit_response "$response")
+    
+    case "$result" in
+        correct)
+            print_success "That's the right answer! ⭐"
+            ;;
+        incorrect)
+            print_error "That's not the right answer"
+            # Try to extract hint if available
+            if echo "$response" | grep -q "too low"; then
+                print_info "Hint: your answer is too low"
+            elif echo "$response" | grep -q "too high"; then
+                print_info "Hint: your answer is too high"
+            fi
+            ;;
+        too_soon)
+            print_warning "You gave an answer too recently. Please wait before trying again."
+            ;;
+        already_completed)
+            print_warning "You already completed this puzzle!"
+            ;;
+        *)
+            print_error "Unable to parse response. Check your internet connection."
+            return 1
+            ;;
+    esac
+}
+
+# main dispatcher
+main() {
+    if [ $# -eq 0 ]; then
+        show_usage
+        exit 0
+    fi
+
+    local command=$1
+    shift
+
+    case "$command" in
+        setup)
+            [ -z "$1" ] && print_error "day required" && exit 1
+            setup_day "$1"
+            ;;
+        run)
+            [ -z "$1" ] && print_error "day required" && exit 1
+            run_day "$1"
+            ;;
+        compile)
+            [ -z "$1" ] && print_error "day required" && exit 1
+            compile_day "$1"
+            ;;
+        test)
+            [ -z "$1" ] && print_error "day required" && exit 1
+            test_day "$1"
+            ;;
+        fetch)
+            [ -z "$1" ] && print_error "day required" && exit 1
+            fetch_input "$1"
+            ;;
+        submit)
+            submit_answer "$1" "$2" "$3"
+            ;;
+        clean)
+            clean_day "$1"
+            ;;
+        status)
+            show_status
+            ;;
+        help|--help|-h)
+            show_usage
+            ;;
+        *)
+            print_error "unknown command: $command"
+            show_usage
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

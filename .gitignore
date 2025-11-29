@@ -1,0 +1,14 @@
+# AoC rules
+inputs/
+
+
+bin/
+*.out
+
+*.o
+
+.env
+
+
+*~
+*.swp
