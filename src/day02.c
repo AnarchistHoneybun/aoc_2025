@@ -1,29 +1,65 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "aoc_utils.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// pattern repeated twice
-int is_invalid(long long num)
+// split in half, check if h1 == h2
+// C23: Use bool instead of int for boolean returns
+[[nodiscard]] static bool is_invalid(long long num)
 {
     char str[32];
     sprintf(str, "%lld", num);
-    int len = strlen(str);
+    size_t len = strlen(str);
 
+    // odd length
     if (len % 2 != 0)
     {
-        return 0;
+        return false;
     }
 
-    int half = len / 2;
+    size_t half = len / 2;
 
-    // if first half equals second half
     return strncmp(str, str + half, half) == 0;
 }
 
-void part1(char **lines, int n, int m)
+// check all pattern lengths, 1..len/2
+// C23: [[nodiscard]] attribute warns if return value is ignored
+[[nodiscard]] static bool is_invalid_repeated(long long num)
+{
+    char str[32];
+    sprintf(str, "%lld", num);
+    size_t len = strlen(str);
+
+    for (size_t pattern_len = 1; pattern_len <= len / 2; pattern_len++)
+    {
+        if (len % pattern_len != 0)
+        {
+            continue;
+        }
+
+        bool is_match = true;
+        for (size_t i = pattern_len; i < len; i++)
+        {
+            if (str[i] != str[i % pattern_len])
+            {
+                is_match = false;
+                break;
+            }
+        }
+
+        if (is_match)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void part1(char **lines, int n, [[maybe_unused]] int m)
 {
     long long result = 0;
 
@@ -62,42 +98,7 @@ void part1(char **lines, int n, int m)
     printf("Part 1: %lld\n", result);
 }
 
-int is_invalid_repeated(long long num)
-{
-    char str[32];
-    sprintf(str, "%lld", num);
-    int len = strlen(str);
-
-    // try all possible pattern lengths from 1 to len/2
-    for (int pattern_len = 1; pattern_len <= len / 2; pattern_len++)
-    {
-        // if the total length is divisible by pattern length
-        if (len % pattern_len != 0)
-        {
-            continue;
-        }
-
-        // check if repeating the first pattern_len characters gives us the whole string
-        int is_match = 1;
-        for (int i = pattern_len; i < len; i++)
-        {
-            if (str[i] != str[i % pattern_len])
-            {
-                is_match = 0;
-                break;
-            }
-        }
-
-        if (is_match)
-        {
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-void part2(char **lines, int n, int m)
+void part2(char **lines, int n, [[maybe_unused]] int m)
 {
     long long result = 0;
 
@@ -141,16 +142,17 @@ int main(int argc, char *argv[])
     if (argc != 2)
     {
         fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
-        return 1;
+        return EXIT_FAILURE; // C23 macro
     }
 
     // Read entire input file into memory
     // n = number of lines, m = length of longest line
     int n, m;
     char **lines = read_input(argv[1], &n, &m);
-    if (lines == NULL)
+    // C23: nullptr instead of NULL
+    if (lines == nullptr)
     {
-        return 1;
+        return EXIT_FAILURE;
     }
 
     part1(lines, n, m);
@@ -158,5 +160,5 @@ int main(int argc, char *argv[])
 
     free_input(lines);
 
-    return 0;
+    return EXIT_SUCCESS;
 }

@@ -132,7 +132,7 @@ compile_day() {
     mkdir -p "$BIN_DIR"
     
     # Include current directory for aoc_utils.h
-    if gcc -o "$binary" "$code_file" -I. -Wall -Wextra -O2 -std=c11 -lm 2>&1; then
+    if gcc -o "$binary" "$code_file" -I. -Wall -Wextra -O2 -std=c23 -lm 2>&1; then
         print_success "compiled $binary"
         return 0
     else
