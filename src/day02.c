@@ -59,7 +59,7 @@
     return false;
 }
 
-void part1(char **lines, int n, [[maybe_unused]] int m)
+long long part1(char **lines, int n, [[maybe_unused]] int m)
 {
     long long result = 0;
 
@@ -95,10 +95,10 @@ void part1(char **lines, int n, [[maybe_unused]] int m)
         }
     }
 
-    printf("Part 1: %lld\n", result);
+    return result;
 }
 
-void part2(char **lines, int n, [[maybe_unused]] int m)
+long long part2(char **lines, int n, [[maybe_unused]] int m)
 {
     long long result = 0;
 
@@ -134,7 +134,7 @@ void part2(char **lines, int n, [[maybe_unused]] int m)
         }
     }
 
-    printf("Part 2: %lld\n", result);
+    return result;
 }
 
 int main(int argc, char *argv[])
@@ -149,14 +149,26 @@ int main(int argc, char *argv[])
     // n = number of lines, m = length of longest line
     int n, m;
     char **lines = read_input(argv[1], &n, &m);
-    // C23: nullptr instead of NULL
-    if (lines == nullptr)
+    if (lines == NULL)
     {
         return EXIT_FAILURE;
     }
 
-    part1(lines, n, m);
-    part2(lines, n, m);
+    // Time part 1
+    long long start = get_time_ns();
+    long long result1 = part1(lines, n, m);
+    long long end = get_time_ns();
+    printf("Part 1: %lld", result1);
+    print_time(end - start);
+    printf("\n");
+
+    // Time part 2
+    start = get_time_ns();
+    long long result2 = part2(lines, n, m);
+    end = get_time_ns();
+    printf("Part 2: %lld", result2);
+    print_time(end - start);
+    printf("\n");
 
     free_input(lines);
 
